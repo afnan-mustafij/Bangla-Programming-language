@@ -1,0 +1,234 @@
+#include <iostream>
+#include <stack>
+#include <map>
+#include <vector>
+#include <algorithm>
+
+enum class TokenType {
+    INTEGER,
+    OPERATOR,
+    IDENTIFIER
+};
+
+struct Token {
+    TokenType type;
+    std::string value;
+};
+
+std::map<char, int> banglaToIntMapping = {
+    { '০', 0 }, { '১', 1 }, { '২', 2 }, { '৩', 3 }, { '৪', 4 },
+    { '৫', 5 }, { '৬', 6 }, { '৭', 7 }, { '৮', 8 }, { '৯', 9 }
+};
+
+std::map<int, char> intToBanglaMapping = {
+    { 0, '০' }, { 1, '১' }, { 2, '২' }, { 3, '৩' }, { 4, '৪' },
+    { 5, '৫' }, { 6, '৬' }, { 7, '৭' }, { 8, '৮' }, { 9, '৯' }
+};
+
+std::vector<Token> lexer(const std::string& code) {
+    std::vector<Token> tokens;
+    std::string currentToken;
+
+    for (char c : code) {
+        if (isdigit(c) || banglaToIntMapping.count(c) > 0) {
+            currentToken += c;
+        } else {
+            if (!currentToken.empty()) {
+                Token token;
+                token.type = TokenType::INTEGER;
+                token.value = currentToken;
+                tokens.push_back(token);
+                currentToken.clear();
+            }
+
+            if (c == '+' || c == '-' || c == '*' || c == '/') {
+                Token token;
+                token.type = TokenType::OPERATOR;
+                token.value = c;
+                tokens.push_back(token);
+            } else if (c == '(' || c == ')' || c == 'যদি' || c == 'তাহলে') {
+                Token token;
+                token.type = TokenType::IDENTIFIER;
+                token.value = c;
+                tokens.push_back(token);
+            }
+        }
+    }
+
+    if (!currentToken.empty()) {
+        Token token;
+        token.type = TokenType::INTEGER;
+        token.value = currentToken;
+        tokens.push_back(token);
+    }
+
+    return tokens;
+}
+
+int performArithmeticOperation(int operand1, int operand2, char op) {
+    int result = 0;
+    switch (op) {
+        case '+':
+            result = operand1 + operand2;
+            break;
+        case '-':
+            result = operand1 - operand2;
+            break;
+        case '*':
+            result = operand1 * operand2;
+            break;
+        case '/':
+            result = operand1 / operand2;
+            break;
+    }
+    return result;
+}
+
+bool evaluateConditionalExpression(int operand1, int operand2, char op) {
+    switch (op) {
+        case 'বড়':
+            return operand1 > operand2;
+        case 'ছোট':
+            return operand1 < operand2;
+        case 'সমান':
+            return operand1 == operand2;
+        case 'সমান নয়':
+            return operand1 != operand2;
+        case 'বড় বা সমান':
+            return operand1 >= operand2;
+        case 'ছোট বা সমান':
+            return operand1 <= operand2;
+        default:
+            return false;
+    }
+}
+
+void parse(const std::vector<Token>& tokens) {
+    std::stack<char> operatorStack;
+    std::stack<int> operandStack;
+    std::stack<bool> conditionalStack;
+
+    for (const Token& token : tokens) {
+        if (token.type == TokenType::INTEGER) {
+            std::string number = token.value;
+            int value = 0;
+            for (char c : number) {
+                if (isdigit(c)) {
+                    value = value * 10 + (c - '0');
+                } else {
+                    value = value * 10 + banglaToIntMapping[c];
+                }
+            }
+            operandStack.push(value);
+        } else if (token.type == TokenType::OPERATOR) {
+            char currentOperator = token.value[0];
+            while (!operatorStack.empty() && operatorStack.top() != '(' &&
+                   ((currentOperator == '*' || currentOperator == '/') ||
+                    (operatorStack.top() == '+' || operatorStack.top() == '-'))) {
+                char topOperator = operatorStack.top();
+                operatorStack.pop();
+                int operand2 = operandStack.top();
+                operandStack.pop();
+                int operand1 = operandStack.top();
+                operandStack.pop();
+                int result = performArithmeticOperation(operand1, operand2, topOperator);
+                operandStack.push(result);
+            }
+            operatorStack.push(currentOperator);
+        } else if (token.type == TokenType::IDENTIFIER) {
+            char currentIdentifier = token.value[0];
+            if (currentIdentifier == '(') {
+                operatorStack.push(currentIdentifier);
+            } else if (currentIdentifier == ')') {
+                while (!operatorStack.empty() && operatorStack.top() != '(') {
+                    char topOperator = operatorStack.top();
+                    operatorStack.pop();
+                    if (!operandStack.empty()) {
+                        int operand2 = operandStack.top();
+                        operandStack.pop();
+                        if (!operandStack.empty()) {
+                            int operand1 = operandStack.top();
+                            operandStack.pop();
+                            int result = performArithmeticOperation(operand1, operand2, topOperator);
+                            operandStack.push(result);
+                        }
+                    }
+                }
+                if (!operatorStack.empty()) {
+                    operatorStack.pop();  // Pop the '('
+                }
+            } else if (currentIdentifier == 'যদি') {
+                operatorStack.push(currentIdentifier);
+                conditionalStack.push(false);  // Push a placeholder value for the condition
+            } else if (currentIdentifier == 'তাহলে') {
+                if (!operatorStack.empty() && operatorStack.top() == 'যদি') {
+                    operatorStack.pop();  // Pop the 'যদি'
+                    bool condition = conditionalStack.top();
+                    conditionalStack.pop();
+                    if (condition) {
+                        while (!operatorStack.empty() && operatorStack.top() != 'যদি' &&
+                               operatorStack.top() != '(') {
+                            char topOperator = operatorStack.top();
+                            operatorStack.pop();
+                            if (!operandStack.empty()) {
+                                int operand2 = operandStack.top();
+                                operandStack.pop();
+                                if (!operandStack.empty()) {
+                                    int operand1 = operandStack.top();
+                                    operandStack.pop();
+                                    int result = performArithmeticOperation(operand1, operand2, topOperator);
+                                    operandStack.push(result);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    while (!operatorStack.empty()) {
+        char topOperator = operatorStack.top();
+        operatorStack.pop();
+        if (!operandStack.empty()) {
+            int operand2 = operandStack.top();
+            operandStack.pop();
+            if (!operandStack.empty()) {
+                int operand1 = operandStack.top();
+                operandStack.pop();
+                int result = performArithmeticOperation(operand1, operand2, topOperator);
+                operandStack.push(result);
+            }
+        }
+    }
+
+    if (!operandStack.empty()) {
+        int result = operandStack.top();
+        std::string banglaResult;
+        if (result < 0) {
+            banglaResult.push_back('-');
+            result = -result;
+        }
+        while (result > 0) {
+            int digit = result % 10;
+            banglaResult.push_back(intToBanglaMapping[digit]);
+            result /= 10;
+        }
+        std::reverse(banglaResult.begin(), banglaResult.end());
+        মুদ্রণ("ফলাফল: " + banglaResult + "\n");
+    }
+}
+
+// Bangla print() equivalent function
+void মুদ্রণ(const std::string& message) {
+    std::cout << message;
+}
+
+int main() {
+    banglaToIntMapping['০'] = 0;
+    std::string code = "যদি (৪ বড় ২) তাহলে (৫ + ৩)";
+    std::vector<Token> tokens = lexer(code);
+    parse(tokens);
+    return 0;
+}
+
